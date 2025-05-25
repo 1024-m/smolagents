@@ -1,68 +1,31 @@
 import argparse
 from io import BytesIO
 from time import sleep
-
 import helium
 import PIL.Image
 from dotenv import load_dotenv
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
-
 from smolagents import CodeAgent, WebSearchTool, tool
 from smolagents.agents import ActionStep
 from smolagents.cli import load_model
-
-
 github_request = """
 I'm trying to find how hard I have to work to get a repo in github.com/trending.
 Can you navigate to the profile for the top author of the top trending repo, and give me their total number of commits over the last year?
-"""  # The agent is able to achieve this request only when powered by GPT-4o or Claude-3.5-sonnet.
-
+""" 
 search_request = """
 Please navigate to https://en.wikipedia.org/wiki/Chicago and give me a sentence containing the word "1992" that mentions a construction accident.
 """
-
-
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Run a web browser automation script with a specified model.")
-    parser.add_argument(
-        "prompt",
-        type=str,
-        nargs="?",  # Makes it optional
-        default=search_request,
-        help="The prompt to run with the agent",
-    )
-    parser.add_argument(
-        "--model-type",
-        type=str,
-        default="LiteLLMModel",
-        help="The model type to use (e.g., OpenAIServerModel, LiteLLMModel, TransformersModel, InferenceClientModel)",
-    )
-    parser.add_argument(
-        "--model-id",
-        type=str,
-        default="gpt-4o",
-        help="The model ID to use for the specified model type",
-    )
-    parser.add_argument(
-        "--provider",
-        type=str,
-        help="The inference provider to use for the model",
-    )
-    parser.add_argument(
-        "--api-base",
-        type=str,
-        help="The API base to use for the model",
-    )
-    parser.add_argument(
-        "--api-key",
-        type=str,
-        help="The API key to use for the model",
-    )
+    parser.add_argument("prompt", type=str, nargs="?", default=search_request, help="The prompt to run with the agent",)
+    parser.add_argument("--model-type", type=str, default="LiteLLMModel", help="The model type to use (e.g., OpenAIServerModel, LiteLLMModel, TransformersModel, InferenceClientModel)",)
+    parser.add_argument("--model-id", type=str, default="gpt-4o", help="The model ID to use for the specified model type",)
+    parser.add_argument("--provider", type=str, help="The inference provider to use for the model",)
+    parser.add_argument("--api-base", type=str, help="The API base to use for the model",)
+    parser.add_argument("--api-key", type=str, help="The API key to use for the model",)
     return parser.parse_args()
-
-
 def save_screenshot(memory_step: ActionStep, agent: CodeAgent) -> None:
     sleep(1.0)  # Let JavaScript animations happen before taking the screenshot
     driver = helium.get_driver()
@@ -75,15 +38,9 @@ def save_screenshot(memory_step: ActionStep, agent: CodeAgent) -> None:
         image = PIL.Image.open(BytesIO(png_bytes))
         print(f"Captured a browser screenshot: {image.size} pixels")
         memory_step.observations_images = [image.copy()]  # Create a copy to ensure it persists, important!
-
-    # Update observations with current URL
     url_info = f"Current url: {driver.current_url}"
-    memory_step.observations = (
-        url_info if memory_step.observations is None else memory_step.observations + "\n" + url_info
-    )
+    memory_step.observations = (url_info if memory_step.observations is None else memory_step.observations + "\n" + url_info)
     return
-
-
 @tool
 def search_item_ctrl_f(text: str, nth_result: int = 1) -> str:
     """
@@ -100,22 +57,16 @@ def search_item_ctrl_f(text: str, nth_result: int = 1) -> str:
     driver.execute_script("arguments[0].scrollIntoView(true);", elem)
     result += f"Focused on element {nth_result} of {len(elements)}"
     return result
-
-
 @tool
 def go_back() -> None:
     """Goes back to previous page."""
     driver.back()
-
-
 @tool
 def close_popups() -> str:
     """
     Closes any visible modal or pop-up on the page. Use this to dismiss pop-up windows! This does not work on cookie consent banners.
     """
     webdriver.ActionChains(driver).send_keys(Keys.ESCAPE).perform()
-
-
 def initialize_driver():
     """Initialize the Selenium WebDriver."""
     chrome_options = webdriver.ChromeOptions()
@@ -124,20 +75,9 @@ def initialize_driver():
     chrome_options.add_argument("--disable-pdf-viewer")
     chrome_options.add_argument("--window-position=0,0")
     return helium.start_chrome(headless=False, options=chrome_options)
-
-
 def initialize_agent(model):
     """Initialize the CodeAgent with the specified model."""
-    return CodeAgent(
-        tools=[WebSearchTool(), go_back, close_popups, search_item_ctrl_f],
-        model=model,
-        additional_authorized_imports=["helium"],
-        step_callbacks=[save_screenshot],
-        max_steps=20,
-        verbosity_level=2,
-    )
-
-
+    return CodeAgent(tools=[WebSearchTool(), go_back, close_popups, search_item_ctrl_f], model=model, additional_authorized_imports=["helium"], step_callbacks=[save_screenshot], max_steps=20, verbosity_level=2,)
 helium_instructions = """
 Use your web_search tool when you want to get Google search results.
 Then you can use helium to access websites. Don't use helium for Google search, only for navigating websites!
@@ -200,36 +140,16 @@ But beware that the screenshot will only be taken at the end of the whole action
 Don't kill the browser.
 When you have modals or cookie banners on screen, you should get rid of them before you can click anything else.
 """
-
-
-def run_webagent(
-    prompt: str,
-    model_type: str,
-    model_id: str,
-    provider: str | None = None,
-    api_base: str | None = None,
-    api_key: str | None = None,
-) -> None:
-    # Load environment variables
+def run_webagent(prompt: str, model_type: str, model_id: str, provider: str | None = None, api_base: str | None = None, api_key: str | None = None,) -> None:
     load_dotenv()
-
-    # Initialize the model based on the provided arguments
     model = load_model(model_type, model_id, provider=provider, api_base=api_base, api_key=api_key)
-
     global driver
     driver = initialize_driver()
     agent = initialize_agent(model)
-
-    # Run the agent with the provided prompt
     agent.python_executor("from helium import *")
     agent.run(prompt + helium_instructions)
-
-
 def main() -> None:
-    # Parse command line arguments
     args = parse_arguments()
     run_webagent(args.prompt, args.model_type, args.model_id, args.provider, args.api_base, args.api_key)
-
-
 if __name__ == "__main__":
     main()
